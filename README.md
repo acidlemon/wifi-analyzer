@@ -23,7 +23,7 @@ python3からObjectiveC呼ぶライブラリを標準Python3に追加
 npm installする
 
 ```bash
-cd wifi-analyzer
+cd macos-wifi-analyzer
 npm install
 ```
 
