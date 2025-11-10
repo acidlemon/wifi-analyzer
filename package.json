@@ -1,0 +1,21 @@
+{
+  "name": "macos-wifi-analyzer",
+  "version": "1.0.0",
+  "description": "WiFi Analyzer for recent macOS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "wifi",
+    "analyzer",
+    "mac",
+    "airport"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
