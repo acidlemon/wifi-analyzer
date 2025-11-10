@@ -87,7 +87,6 @@ const PORT = 3000; // お好みのポート番号に変更
 - **Backend**: Node.js + Express
 - **Frontend**: HTML5 + Vanilla JavaScript
 - **Charts**: Chart.js
-- **Mac Command**: airport (Apple80211 framework)
 
 ## ライセンス
 

@@ -131,6 +131,7 @@ def scan_and_output_json():
         "metadata": {
             "timestamp": datetime.now().isoformat(),
             "interface": wifi_interface.interfaceName(),
+            "connected_bssid": wifi_interface.bssid() if wifi_interface.bssid() else None,
             "total_networks": len(result)
         },
         "networks": result

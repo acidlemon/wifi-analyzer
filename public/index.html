@@ -137,6 +137,26 @@
             background: #f8f9fa;
         }
 
+        tr.connected {
+            background: #e0f2fe;
+            border-left: 4px solid #0ea5e9;
+        }
+
+        tr.connected:hover {
+            background: #bae6fd;
+        }
+
+        .connected-badge {
+            display: inline-block;
+            background: #0ea5e9;
+            color: white;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+
         .signal-bar {
             height: 20px;
             border-radius: 4px;
@@ -209,6 +229,72 @@
             color: #666;
             margin-top: 5px;
         }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #666;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin-bottom: -2px;
+        }
+
+        .tab:hover {
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+            transform: none;
+            box-shadow: none;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .tab:disabled {
+            opacity: 0.5;
+        }
+
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 24px;
+        }
+
+        th.sortable:hover {
+            background: #e9ecef;
+        }
+
+        th.sortable::after {
+            content: '⇅';
+            position: absolute;
+            right: 8px;
+            opacity: 0.3;
+            font-size: 12px;
+        }
+
+        th.sortable.asc::after {
+            content: '↑';
+            opacity: 1;
+        }
+
+        th.sortable.desc::after {
+            content: '↓';
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -257,6 +343,11 @@
 
             <div class="card">
                 <h2>📡 チャンネル使用状況</h2>
+                <div class="tabs">
+                    <button class="tab active" onclick="switchBandTab('2.4GHz')">2.4GHz</button>
+                    <button class="tab" onclick="switchBandTab('5GHz')">5GHz</button>
+                    <button class="tab" onclick="switchBandTab('6GHz')">6GHz</button>
+                </div>
                 <div id="channelChartContainer">
                     <canvas id="channelChart"></canvas>
                 </div>
@@ -265,22 +356,29 @@
 
         <div class="card">
             <h2>📋 ネットワーク一覧</h2>
+            <div class="tabs">
+                <button class="tab active" onclick="switchNetworkBandTab('all')">すべて</button>
+                <button class="tab" onclick="switchNetworkBandTab('2.4GHz')">2.4GHz</button>
+                <button class="tab" onclick="switchNetworkBandTab('5GHz')">5GHz</button>
+                <button class="tab" onclick="switchNetworkBandTab('6GHz')">6GHz</button>
+            </div>
             <div style="overflow-x: auto;">
                 <table id="networkTable">
                     <thead>
                         <tr>
-                            <th>SSID</th>
+                            <th class="sortable" onclick="sortTable('ssid')">SSID</th>
                             <th>BSSID</th>
                             <th>信号強度</th>
-                            <th>RSSI</th>
-                            <th>チャンネル</th>
-                            <th>帯域幅</th>
+                            <th class="sortable" onclick="sortTable('rssi')">RSSI</th>
+                            <th class="sortable" onclick="sortTable('band')">帯域</th>
+                            <th class="sortable" onclick="sortTable('channel')">チャンネル</th>
+                            <th class="sortable" onclick="sortTable('bandwidth')">帯域幅</th>
                             <th>セキュリティ</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody">
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 40px; color: #999;">
+                            <td colspan="8" style="text-align: center; padding: 40px; color: #999;">
                                 スキャンを実行してください
                             </td>
                         </tr>
@@ -295,6 +393,12 @@
         let channelChart = null;
         let autoScanInterval = null;
         let isAutoScanEnabled = true;
+        let currentBand = '2.4GHz';
+        let currentNetworkBand = 'all';
+        let currentNetworks = [];
+        let connectedBssid = null;
+        let sortColumn = null;
+        let sortDirection = 'asc';
 
         async function scanNetworks() {
             const btn = document.getElementById('scanBtn');
@@ -312,6 +416,10 @@
                     throw new Error(data.error);
                 }
 
+                currentNetworks = data.networks;
+                connectedBssid = data.connectedBssid;
+                console.log('Connected BSSID:', connectedBssid);
+                console.log('Networks:', data.networks.map(n => ({ ssid: n.ssid, bssid: n.bssid })));
                 updateStats(data.networks);
                 updateTable(data.networks);
                 updateSignalChart(data.networks);
@@ -343,13 +451,83 @@
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
 
-            networks.forEach(network => {
+            // 帯域でフィルタリング
+            let filteredNetworks = currentNetworkBand === 'all'
+                ? networks
+                : networks.filter(n => n.band === currentNetworkBand);
+
+            // ソート適用
+            if (sortColumn) {
+                filteredNetworks = [...filteredNetworks].sort((a, b) => {
+                    let aVal, bVal;
+
+                    switch(sortColumn) {
+                        case 'ssid':
+                            aVal = a.ssid.toLowerCase();
+                            bVal = b.ssid.toLowerCase();
+                            break;
+                        case 'rssi':
+                            aVal = a.rssi;
+                            bVal = b.rssi;
+                            break;
+                        case 'band':
+                            const bandOrder = {'2.4GHz': 1, '5GHz': 2, '6GHz': 3, 'Unknown': 4};
+                            aVal = bandOrder[a.band] || 4;
+                            bVal = bandOrder[b.band] || 4;
+                            break;
+                        case 'channel':
+                            aVal = parseInt(a.channel) || 0;
+                            bVal = parseInt(b.channel) || 0;
+                            break;
+                        case 'bandwidth':
+                            const bwOrder = {'20MHz': 1, '40MHz': 2, '80MHz': 3, '160MHz': 4, 'Unknown': 0};
+                            aVal = bwOrder[a.bandwidth] || 0;
+                            bVal = bwOrder[b.bandwidth] || 0;
+                            break;
+                        default:
+                            return 0;
+                    }
+
+                    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            if (filteredNetworks.length === 0) {
                 const row = tbody.insertRow();
-                
+                const cell = row.insertCell();
+                cell.colSpan = 8;
+                cell.style.textAlign = 'center';
+                cell.style.padding = '40px';
+                cell.style.color = '#999';
+                cell.textContent = 'このフィルタに一致するネットワークはありません';
+                return;
+            }
+
+            filteredNetworks.forEach(network => {
+                const row = tbody.insertRow();
+                const isConnected = connectedBssid && network.bssid === connectedBssid;
+
+                console.log('Checking:', network.bssid, '===', connectedBssid, '?', isConnected);
+
+                // 接続中の場合はクラスを追加
+                if (isConnected) {
+                    row.classList.add('connected');
+                }
+
                 // SSID
                 const ssidCell = row.insertCell();
                 ssidCell.textContent = network.ssid;
                 ssidCell.style.fontWeight = '600';
+
+                // 接続中バッジを追加
+                if (isConnected) {
+                    const badge = document.createElement('span');
+                    badge.className = 'connected-badge';
+                    badge.textContent = '接続中';
+                    ssidCell.appendChild(badge);
+                }
 
                 // BSSID
                 const bssidCell = row.insertCell();
@@ -367,6 +545,10 @@
                 // RSSI
                 const rssiCell = row.insertCell();
                 rssiCell.textContent = `${network.rssi} dBm`;
+
+                // Band
+                const bandCell = row.insertCell();
+                bandCell.textContent = network.band;
 
                 // Channel
                 const channelCell = row.insertCell();
@@ -438,19 +620,31 @@
 
         function updateChannelChart(networks) {
             const ctx = document.getElementById('channelChart').getContext('2d');
-            
-            // チャンネルごとにカウント
+
+            // 現在の帯域でフィルタリング
+            const filteredNetworks = networks.filter(n => n.band === currentBand);
+
+            // 各帯域のチャンネル範囲を定義
+            const channelRanges = {
+                '2.4GHz': Array.from({length: 13}, (_, i) => (i + 1).toString()),
+                '5GHz': ['36', '40', '44', '48', '52', '56', '60', '64', '100', '104', '108', '112', '116', '120', '124', '128', '132', '136', '140', '144', '149', '153', '157', '161', '165'],
+                '6GHz': ['1', '5', '9', '13', '17', '21', '25', '29', '33', '37', '41', '45', '49', '53', '57', '61', '65', '69', '73', '77', '81', '85', '89', '93', '97', '101', '105', '109', '113', '117', '121', '125', '129', '133', '137', '141', '145', '149', '153', '157', '161', '165', '169', '173', '177', '181', '185', '189', '193', '197', '201', '205', '209', '213', '217', '221', '225', '229', '233']
+            };
+
+            const channels = channelRanges[currentBand] || [];
+
+            // チャンネルごとにカウント（0で初期化）
             const channelCounts = {};
-            networks.forEach(n => {
-                const ch = n.channel;
-                channelCounts[ch] = (channelCounts[ch] || 0) + 1;
+            channels.forEach(ch => {
+                channelCounts[ch] = 0;
             });
 
-            // ソート
-            const sortedChannels = Object.keys(channelCounts).sort((a, b) => {
-                const numA = parseInt(a.replace(/\D/g, ''));
-                const numB = parseInt(b.replace(/\D/g, ''));
-                return numA - numB;
+            // 実際のネットワークをカウント
+            filteredNetworks.forEach(n => {
+                const ch = n.channel.toString();
+                if (channelCounts.hasOwnProperty(ch)) {
+                    channelCounts[ch]++;
+                }
             });
 
             if (channelChart) {
@@ -460,10 +654,10 @@
             channelChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: sortedChannels,
+                    labels: channels,
                     datasets: [{
                         label: 'ネットワーク数',
-                        data: sortedChannels.map(ch => channelCounts[ch]),
+                        data: channels.map(ch => channelCounts[ch]),
                         backgroundColor: 'rgba(102, 126, 234, 0.8)',
                         borderRadius: 6,
                     }]
@@ -510,6 +704,58 @@
             if (rssi > -60) return 'rgba(59, 130, 246, 0.8)';
             if (rssi > -70) return 'rgba(245, 158, 11, 0.8)';
             return 'rgba(239, 68, 68, 0.8)';
+        }
+
+        function switchBandTab(band) {
+            currentBand = band;
+
+            // タブのアクティブ状態を更新
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // グラフを更新
+            if (currentNetworks.length > 0) {
+                updateChannelChart(currentNetworks);
+            }
+        }
+
+        function switchNetworkBandTab(band) {
+            currentNetworkBand = band;
+
+            // タブのアクティブ状態を更新
+            const parentDiv = event.target.closest('.card');
+            parentDiv.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // テーブルを更新
+            if (currentNetworks.length > 0) {
+                updateTable(currentNetworks);
+            }
+        }
+
+        function sortTable(column) {
+            // 同じカラムをクリックした場合は方向を反転、違うカラムの場合は昇順に
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+
+            // ヘッダーのクラスを更新
+            document.querySelectorAll('#networkTable th.sortable').forEach(th => {
+                th.classList.remove('asc', 'desc');
+            });
+            event.target.classList.add(sortDirection);
+
+            // テーブルを更新
+            if (currentNetworks.length > 0) {
+                updateTable(currentNetworks);
+            }
         }
 
         function toggleAutoScan() {

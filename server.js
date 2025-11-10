@@ -27,6 +27,8 @@ app.get('/api/scan', (req, res) => {
       // Pythonスクリプトの出力をパース
       const data = JSON.parse(stdout);
 
+      console.log('Python script metadata:', data.metadata);
+
       // エラーチェック
       if (data.metadata && data.metadata.error) {
         return res.status(500).json({
@@ -53,7 +55,8 @@ app.get('/api/scan', (req, res) => {
       res.json({
         networks,
         timestamp: data.metadata.timestamp,
-        count: networks.length
+        count: networks.length,
+        connectedBssid: data.metadata.connected_bssid
       });
     } catch (parseError) {
       console.error('Error parsing Python script output:', parseError);
