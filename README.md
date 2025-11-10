@@ -1,6 +1,6 @@
 # WiFi Analyzer
 
-Mac の airport コマンドを使用した Wi-Fi ネットワーク分析ツール
+Mac の airportコマンドを利用せず、macOS 14.4以降も利用可能な Wi-Fi ネットワーク分析ツール
 
 ## 機能
 
@@ -12,7 +12,6 @@ Mac の airport コマンドを使用した Wi-Fi ネットワーク分析ツー
 ## セットアップ
 
 1. **依存関係のインストール**
-
 
 python3からObjectiveC呼ぶライブラリを標準Python3に追加
 
