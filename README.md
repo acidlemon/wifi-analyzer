@@ -83,20 +83,6 @@ setInterval(scanNetworks, 10000); // 10秒ごと
 const PORT = 3000; // お好みのポート番号に変更
 ```
 
-## トラブルシューティング
-
-### airportコマンドが見つからない
-
-通常 macOS には airport コマンドが含まれていますが、パスが異なる場合は `server.js` の `airportPath` を調整してください。
-
-### 権限エラー
-
-airport コマンドの実行に管理者権限は不要ですが、もしエラーが出る場合は以下を確認：
-
-```bash
-ls -l /System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport
-```
-
 ## 技術スタック
 
 - **Backend**: Node.js + Express
