@@ -336,6 +336,12 @@
         <div class="grid">
             <div class="card">
                 <h2>📊 信号強度グラフ</h2>
+                <div class="tabs">
+                    <button class="tab active" onclick="switchSignalBandTab('all')">すべて</button>
+                    <button class="tab" onclick="switchSignalBandTab('2.4GHz')">2.4GHz</button>
+                    <button class="tab" onclick="switchSignalBandTab('5GHz')">5GHz</button>
+                    <button class="tab" onclick="switchSignalBandTab('6GHz')">6GHz</button>
+                </div>
                 <div id="chartContainer">
                     <canvas id="signalChart"></canvas>
                 </div>
@@ -394,11 +400,14 @@
         let autoScanInterval = null;
         let isAutoScanEnabled = true;
         let currentBand = '2.4GHz';
+        let currentSignalBand = 'all';
         let currentNetworkBand = 'all';
         let currentNetworks = [];
         let connectedBssid = null;
         let sortColumn = null;
         let sortDirection = 'asc';
+        let currentBandInfo = null;
+        let currentFilteredNetworks = [];
 
         async function scanNetworks() {
             const btn = document.getElementById('scanBtn');
@@ -537,9 +546,10 @@
                 // Signal bar
                 const signalCell = row.insertCell();
                 const signalBar = document.createElement('div');
+                const signalQuality = calculateSignalQuality(network.rssi);
                 signalBar.className = `signal-bar ${getSignalClass(network.rssi)}`;
-                signalBar.style.width = `${network.signalQuality}%`;
-                signalBar.textContent = `${network.signalQuality}%`;
+                signalBar.style.width = `${signalQuality}%`;
+                signalBar.textContent = `${signalQuality}%`;
                 signalCell.appendChild(signalBar);
 
                 // RSSI
@@ -569,53 +579,67 @@
 
         function updateSignalChart(networks) {
             const ctx = document.getElementById('signalChart').getContext('2d');
-            
+
+            // 帯域でフィルタリング
+            let filteredNetworks = currentSignalBand === 'all'
+                ? networks
+                : networks.filter(n => n.band === currentSignalBand);
+
             // 上位15件のみ表示
-            const topNetworks = networks.slice(0, 15);
+            const topNetworks = filteredNetworks.slice(0, 15);
 
             if (signalChart) {
-                signalChart.destroy();
-            }
-
-            signalChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: topNetworks.map(n => n.ssid),
-                    datasets: [{
-                        label: 'RSSI (dBm)',
-                        data: topNetworks.map(n => n.rssi),
-                        backgroundColor: topNetworks.map(n => getChartColor(n.rssi)),
-                        borderRadius: 6,
-                        base: -100,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
+                // 既存のグラフがあればデータを更新
+                signalChart.data.labels = topNetworks.map(n => n.ssid);
+                signalChart.data.datasets[0].data = topNetworks.map(n => n.rssi);
+                signalChart.data.datasets[0].backgroundColor = topNetworks.map(n => getChartColor(n.rssi));
+                signalChart.update();
+            } else {
+                // 初回のみグラフを作成
+                signalChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: topNetworks.map(n => n.ssid),
+                        datasets: [{
+                            label: 'RSSI (dBm)',
+                            data: topNetworks.map(n => n.rssi),
+                            backgroundColor: topNetworks.map(n => getChartColor(n.rssi)),
+                            borderRadius: 6,
+                            base: -100,
+                        }]
                     },
-                    scales: {
-                        y: {
-                            beginAtZero: false,
-                            min: -100,
-                            max: -20,
-                            title: {
-                                display: true,
-                                text: 'RSSI (dBm)'
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 750,
+                            easing: 'easeInOutQuart'
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
                             }
                         },
-                        x: {
-                            ticks: {
-                                maxRotation: 45,
-                                minRotation: 45
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                min: -100,
+                                max: -20,
+                                title: {
+                                    display: true,
+                                    text: 'RSSI (dBm)'
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
         }
 
         function updateChannelChart(networks) {
@@ -623,73 +647,300 @@
 
             // 現在の帯域でフィルタリング
             const filteredNetworks = networks.filter(n => n.band === currentBand);
+            currentFilteredNetworks = filteredNetworks;
 
-            // 各帯域のチャンネル範囲を定義
-            const channelRanges = {
-                '2.4GHz': Array.from({length: 13}, (_, i) => (i + 1).toString()),
-                '5GHz': ['36', '40', '44', '48', '52', '56', '60', '64', '100', '104', '108', '112', '116', '120', '124', '128', '132', '136', '140', '144', '149', '153', '157', '161', '165'],
-                '6GHz': ['1', '5', '9', '13', '17', '21', '25', '29', '33', '37', '41', '45', '49', '53', '57', '61', '65', '69', '73', '77', '81', '85', '89', '93', '97', '101', '105', '109', '113', '117', '121', '125', '129', '133', '137', '141', '145', '149', '153', '157', '161', '165', '169', '173', '177', '181', '185', '189', '193', '197', '201', '205', '209', '213', '217', '221', '225', '229', '233']
+            // 各帯域のチャンネル範囲と帯域幅を定義
+            const bandInfo = {
+                '2.4GHz': {
+                    channels: Array.from({length: 13}, (_, i) => i + 1),
+                    // 滑らかな曲線のために0.5刻みでデータポイントを生成
+                    dataPoints: Array.from({length: 25}, (_, i) => 1 + i * 0.5), // 1, 1.5, 2, ..., 13
+                    channelWidth: 5, // MHz間隔
+                    signalWidth: 22 // 各チャンネルの実際の帯域幅（±11MHz）
+                },
+                '5GHz': {
+                    channels: [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165],
+                    // 滑らかな曲線のために細かくデータポイントを生成
+                    dataPoints: (() => {
+                        const points = [];
+                        for (let i = 34; i <= 66; i++) points.push(i);
+                        for (let i = 98; i <= 167; i++) points.push(i);
+                        return points;
+                    })(),
+                    channelWidth: 20, // 20MHz間隔
+                    signalWidth: 20 // 各チャンネルの帯域幅
+                },
+                '6GHz': {
+                    channels: [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61, 65, 69, 73, 77, 81, 85, 89, 93, 97, 101, 105, 109, 113, 117, 121, 125, 129, 133, 137, 141, 145, 149, 153, 157, 161, 165, 169, 173, 177, 181, 185, 189, 193, 197, 201, 205, 209, 213, 217, 221, 225, 229, 233],
+                    // 滑らかな曲線のために細かくデータポイントを生成
+                    dataPoints: Array.from({length: 234}, (_, i) => i + 1),
+                    channelWidth: 20, // 20MHz間隔
+                    signalWidth: 20 // 各チャンネルの帯域幅
+                }
             };
 
-            const channels = channelRanges[currentBand] || [];
+            const info = bandInfo[currentBand];
+            if (!info) return;
+            currentBandInfo = info;
 
-            // チャンネルごとにカウント（0で初期化）
-            const channelCounts = {};
-            channels.forEach(ch => {
-                channelCounts[ch] = 0;
+            // チャンネルのラベルを生成（channelsに含まれるチャンネルのみ）
+            const channelLabels = info.dataPoints.map(ch => {
+                if (!Number.isInteger(ch)) return '';
+                // channelsに含まれるチャンネルのみラベル表示
+                return info.channels.includes(ch) ? ch.toString() : '';
             });
 
-            // 実際のネットワークをカウント
-            filteredNetworks.forEach(n => {
-                const ch = n.channel.toString();
-                if (channelCounts.hasOwnProperty(ch)) {
-                    channelCounts[ch]++;
+            // 各ネットワークのデータセットを作成
+            const datasets = filteredNetworks.map((network, index) => {
+                const channel = parseInt(network.channel);
+                const channelIndex = info.channels.indexOf(channel);
+
+                if (channelIndex === -1) return null;
+
+                // 信号強度を正規化（0-100）
+                // RSSI: -90dBm(弱い) ～ -40dBm(強い)
+                const normalizedRssi = Math.max(0, Math.min(100, ((network.rssi + 90) / 50) * 100));
+
+                // 帯域幅を取得
+                const bandwidth = network.bandwidth || '20MHz';
+                let actualSignalWidth = info.signalWidth;
+                let centerChannel = channel;
+
+                // 帯域幅に応じて実際の信号幅と中心チャンネルを計算
+                if (currentBand === '2.4GHz') {
+                    // 2.4GHzは常に22MHz
+                    actualSignalWidth = 22;
+                } else if (currentBand === '5GHz' || currentBand === '6GHz') {
+                    if (bandwidth === '40MHz') {
+                        actualSignalWidth = 40;
+                        // 40MHz: 2チャンネルをボンディング
+                        // 36と40 → 38, 44と48 → 46, 52と56 → 54, 60と64 → 62
+                        // 149と153 → 151, 157と161 → 159
+                        const baseChannel = channel >= 149 ? 149 : 36;
+                        const lowerChannel = (channel - baseChannel) % 8 === 4 ? channel - 4 : channel;
+                        centerChannel = lowerChannel + 2;
+                    } else if (bandwidth === '80MHz') {
+                        actualSignalWidth = 80;
+                        // 80MHz: 4チャンネルをボンディング
+                        // 36,40,44,48 → 42, 52,56,60,64 → 58
+                        // 149,153,157,161 → 155
+                        const baseChannel = channel >= 149 ? 149 : 36;
+                        const blockStart = Math.floor((channel - baseChannel) / 16) * 16 + baseChannel;
+                        centerChannel = blockStart + 6;
+                    } else if (bandwidth === '160MHz') {
+                        actualSignalWidth = 160;
+                        // 160MHz: 8チャンネルをボンディング
+                        const baseChannel = channel >= 149 ? 149 : 36;
+                        const blockStart = Math.floor((channel - baseChannel) / 32) * 32 + baseChannel;
+                        centerChannel = blockStart + 14;
+                    } else {
+                        // 20MHz
+                        actualSignalWidth = 20;
+                    }
                 }
-            });
+
+                // データポイントを生成
+                const dataPoints = info.dataPoints.map((point, idx) => {
+                    // 中心チャンネルとの距離を計算
+                    const channelDistance = Math.abs(point - centerChannel);
+
+                    // 帯域幅の半分（周波数単位でMHz）
+                    const halfBandwidthMHz = actualSignalWidth / 2;
+
+                    // チャンネル単位に変換
+                    // すべての帯域で1チャンネルの間隔を考慮
+                    let halfBandwidth;
+                    if (currentBand === '2.4GHz') {
+                        // 2.4GHz: 1チャンネル = 5MHz
+                        halfBandwidth = halfBandwidthMHz / 5; // MHz / (5MHz/ch) = チャンネル数
+                    } else if (currentBand === '5GHz') {
+                        // 5GHz: チャンネル4間隔 = 20MHz → 1チャンネル間隔 = 5MHz
+                        // 例: ch36とch40の間は20MHz → 4チャンネル差
+                        halfBandwidth = (halfBandwidthMHz / 20) * 4; // (MHz / 20MHz) * 4ch = チャンネル数
+                    } else {
+                        // 6GHz: チャンネル4間隔 = 20MHz → 1チャンネル間隔 = 5MHz
+                        halfBandwidth = (halfBandwidthMHz / 20) * 4;
+                    }
+
+                    // サイクロイド曲線で電波強度を計算
+                    // 帯域幅の範囲内では滑らかな曲線、範囲外は0
+                    if (channelDistance <= halfBandwidth) {
+                        // 範囲内: サイクロイド（半円の軌跡）
+                        // 正規化された位置 (0 to 1)
+                        const normalizedPos = channelDistance / halfBandwidth;
+
+                        // サイクロイドの形状: θを0からπまで
+                        // 中心(channelDistance=0)で最大、端(channelDistance=halfBandwidth)で0にする
+                        const theta = normalizedPos * Math.PI;
+
+                        // サイクロイドのy座標: y = a(1 + cos(θ))
+                        // θ=0でy=2a（最大）, θ=π/2でy=a, θ=πでy=0（最小）
+                        const a = 1; // 正規化された半径
+                        const cycloidY = a * (1 + Math.cos(theta)); // 2a to 0
+
+                        // 最大値2aで正規化し、電波強度を掛ける
+                        return normalizedRssi * (cycloidY / (2 * a));
+                    } else {
+                        // 範囲外: 0
+                        return 0;
+                    }
+                });
+
+                // 信号強度に応じた色を生成
+                const color = getChartColor(network.rssi);
+                const rgbaColor = color.replace('0.8)', '0.6)');
+
+                return {
+                    label: network.ssid,
+                    data: dataPoints,
+                    borderColor: color,
+                    backgroundColor: rgbaColor,
+                    borderWidth: 2,
+                    fill: true,
+                    pointRadius: 0,
+                    tension: 0.4
+                };
+            }).filter(dataset => dataset !== null);
 
             if (channelChart) {
-                channelChart.destroy();
-            }
-
-            channelChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: channels,
-                    datasets: [{
-                        label: 'ネットワーク数',
-                        data: channels.map(ch => channelCounts[ch]),
-                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
-                        borderRadius: 6,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
+                // 既存のグラフがあればデータを更新
+                channelChart.data.labels = channelLabels;
+                channelChart.data.datasets = datasets;
+                channelChart.update();
+            } else {
+                // 初回のみグラフを作成
+                channelChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: channelLabels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 750,
+                            easing: 'easeInOutQuart'
+                        },
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
                     plugins: {
                         legend: {
-                            display: false
+                            display: true,
+                            position: 'right',
+                            labels: {
+                                boxWidth: 12,
+                                font: {
+                                    size: 10
+                                },
+                                filter: function(item, chart) {
+                                    // 上位10件のみ表示
+                                    return chart.datasets.indexOf(item) < 10;
+                                }
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            filter: function(tooltipItem) {
+                                // グローバル変数から現在の値を取得
+                                if (!currentBandInfo || !currentFilteredNetworks.length) return false;
+
+                                // マウスカーソルのあるデータポイントを取得
+                                const dataPointIndex = tooltipItem.dataIndex;
+                                const hoveredChannel = currentBandInfo.dataPoints[dataPointIndex];
+
+                                const network = currentFilteredNetworks[tooltipItem.datasetIndex];
+                                if (!network) return false;
+
+                                // 整数チャンネルのみ処理
+                                if (!Number.isInteger(hoveredChannel)) return false;
+
+                                // ネットワークのチャンネル番号と帯域幅を取得
+                                const networkChannel = parseInt(network.channel);
+                                const bandwidth = network.bandwidth || '20MHz';
+
+                                // 帯域幅に応じて中心チャンネルを計算（グラフの頂上）
+                                let centerChannel = networkChannel;
+                                if (currentBand === '5GHz' || currentBand === '6GHz') {
+                                    if (bandwidth === '40MHz') {
+                                        // 36と40 → 38, 44と48 → 46, 52と56 → 54, 60と64 → 62
+                                        // 149と153 → 151, 157と161 → 159
+                                        const baseChannel = networkChannel >= 149 ? 149 : 36;
+                                        const lowerChannel = (networkChannel - baseChannel) % 8 === 4 ? networkChannel - 4 : networkChannel;
+                                        centerChannel = lowerChannel + 2;
+                                    } else if (bandwidth === '80MHz') {
+                                        // 36,40,44,48 → 42, 52,56,60,64 → 58
+                                        // 149,153,157,161 → 155
+                                        const baseChannel = networkChannel >= 149 ? 149 : 36;
+                                        const blockStart = Math.floor((networkChannel - baseChannel) / 16) * 16 + baseChannel;
+                                        centerChannel = blockStart + 6;
+                                    } else if (bandwidth === '160MHz') {
+                                        const baseChannel = networkChannel >= 149 ? 149 : 36;
+                                        const blockStart = Math.floor((networkChannel - baseChannel) / 32) * 32 + baseChannel;
+                                        centerChannel = blockStart + 14;
+                                    }
+                                }
+
+                                // ホバーしているチャンネルが中心チャンネル（頂上）と一致する場合のみ表示
+                                return hoveredChannel === centerChannel;
+                            },
+                            callbacks: {
+                                label: function(context) {
+                                    // グローバル変数から現在の値を取得
+                                    if (!currentFilteredNetworks.length) return '';
+                                    const network = currentFilteredNetworks[context.datasetIndex];
+                                    if (!network) return '';
+                                    const bandwidth = network.bandwidth || '20MHz';
+                                    return `${network.ssid}: ${network.rssi} dBm (Ch ${network.channel} ${bandwidth})`;
+                                }
+                            }
                         }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            ticks: {
-                                stepSize: 1
-                            },
+                            max: 100,
                             title: {
                                 display: true,
-                                text: 'ネットワーク数'
+                                text: '信号強度 (%)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
                             }
                         },
                         x: {
+                            grid: {
+                                display: false,
+                                // drawTicks: false,
+                            },
                             title: {
                                 display: true,
                                 text: 'チャンネル'
+                            },
+                            ticks: {
+                                autoSkip: false,
+                                maxRotation: 0,
+                                maxTicksLimit: currentBand === '2.4GHz' ? 13 : undefined,
                             }
                         }
                     }
-                }
-            });
+                    }
+                });
+            }
+        }
+
+        function calculateSignalQuality(rssi) {
+            // RSSI to quality percentage
+            // -40 dBm = 100% (excellent)
+            // -90 dBm = 0% (unusable)
+            const min = -90;
+            const max = -40;
+            const quality = Math.round(((rssi - min) / (max - min)) * 100);
+            return Math.max(0, Math.min(100, quality));
         }
 
         function getSignalClass(rssi) {
@@ -706,11 +957,28 @@
             return 'rgba(239, 68, 68, 0.8)';
         }
 
+        function switchSignalBandTab(band) {
+            currentSignalBand = band;
+
+            // タブのアクティブ状態を更新
+            const parentDiv = event.target.closest('.card');
+            parentDiv.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // グラフを更新
+            if (currentNetworks.length > 0) {
+                updateSignalChart(currentNetworks);
+            }
+        }
+
         function switchBandTab(band) {
             currentBand = band;
 
             // タブのアクティブ状態を更新
-            document.querySelectorAll('.tab').forEach(tab => {
+            const parentDiv = event.target.closest('.card');
+            parentDiv.querySelectorAll('.tab').forEach(tab => {
                 tab.classList.remove('active');
             });
             event.target.classList.add('active');

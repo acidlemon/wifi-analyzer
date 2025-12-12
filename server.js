@@ -46,7 +46,6 @@ app.get('/api/scan', (req, res) => {
         band: network.Band,
         bandwidth: network.Bandwidth,
         security: network.Security,
-        signalQuality: calculateSignalQuality(network.RSSI),
         // 互換性のために古いフィールドも保持
         ht: network.Bandwidth,
         cc: ''
@@ -68,17 +67,6 @@ app.get('/api/scan', (req, res) => {
     }
   });
 });
-
-// 信号品質を計算（%）
-function calculateSignalQuality(rssi) {
-  // RSSI to quality percentage
-  // -30 dBm = 100% (excellent)
-  // -90 dBm = 0% (unusable)
-  const min = -90;
-  const max = -30;
-  const quality = Math.round(((rssi - min) / (max - min)) * 100);
-  return Math.max(0, Math.min(100, quality));
-}
 
 app.listen(PORT, () => {
   console.log(`🛜  WiFi Analyzer running at http://localhost:${PORT}`);
