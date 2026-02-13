@@ -4,6 +4,7 @@ const path = require('path');
 
 const app = express();
 const PORT = 3000;
+const PYTHON3 = process.env.PYTHON3_PATH || '/usr/bin/python3';
 
 // 静的ファイルの提供
 app.use(express.static('public'));
@@ -13,7 +14,7 @@ app.get('/api/scan', (req, res) => {
   // Pythonスクリプトを使用してWi-Fi情報を取得（CoreWLAN APIを使用）
   const scriptPath = path.join(__dirname, 'scan_wifi.py');
 
-  exec(`python3 "${scriptPath}"`, (error, stdout, stderr) => {
+  exec(`${PYTHON3} "${scriptPath}"`, (error, stdout, stderr) => {
     if (error) {
       console.error('Error executing scan_wifi.py:', error);
       console.error('stderr:', stderr);
